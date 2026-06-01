@@ -1,5 +1,5 @@
 // fetch-primal.js — Bot automatico #primal tracker
-// Usa Apify clockworks/tiktok-scraper per leggere il conteggio hashtag
+// Usa Apify clockworks/tiktok-scraper per leggere il conteggio video dell'hashtag
 
 const https = require('https');
 const fs = require('fs');
@@ -12,7 +12,6 @@ if (!APIFY_TOKEN) {
   process.exit(1);
 }
 
-// Helper: HTTP request con Promise
 function httpRequest(options, body = null) {
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
@@ -32,16 +31,15 @@ function httpRequest(options, body = null) {
   });
 }
 
-// Sleep
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function fetchPrimalCount() {
+async function fetchPrimalVideoCount() {
   console.log('🚀 Avvio scraper TikTok per #primal...');
 
-  // 1. Avvia actor Apify
+  // Scarica più video così aumenta la chance di trovare videoCount
   const runBody = JSON.stringify({
     hashtags: ['primal'],
-    resultsPerPage: 1,
+    resultsPerPage: 5,
     shouldDownloadVideos: false,
     shouldDownloadCovers: false,
     shouldDownloadSubtitles: false,
@@ -66,7 +64,7 @@ async function fetchPrimalCount() {
   const runId = runRes.body.data.id;
   console.log(`✅ Actor avviato. Run ID: ${runId}`);
 
-  // 2. Polling fino a SUCCEEDED
+  // Polling
   let status = 'RUNNING';
   let attempts = 0;
   while (['RUNNING', 'READY', 'ABORTING'].includes(status)) {
@@ -76,13 +74,11 @@ async function fetchPrimalCount() {
       console.error('❌ Timeout dopo 4 minuti');
       process.exit(1);
     }
-
     const statusRes = await httpRequest({
       hostname: 'api.apify.com',
       path: `/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`,
       method: 'GET',
     });
-
     status = statusRes.body.data.status;
     console.log(`⏳ Stato: ${status} (${attempts * 12}s)`);
   }
@@ -92,7 +88,7 @@ async function fetchPrimalCount() {
     process.exit(1);
   }
 
-  // 3. Leggi dataset
+  // Leggi dataset
   const runInfoRes = await httpRequest({
     hostname: 'api.apify.com',
     path: `/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`,
@@ -102,7 +98,7 @@ async function fetchPrimalCount() {
 
   const itemsRes = await httpRequest({
     hostname: 'api.apify.com',
-    path: `/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=5`,
+    path: `/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=10`,
     method: 'GET',
   });
 
@@ -112,23 +108,55 @@ async function fetchPrimalCount() {
     process.exit(1);
   }
 
-  console.log('📦 Primo item:', JSON.stringify(items[0], null, 2));
+  console.log(`📦 Ricevuti ${items.length} item dal dataset`);
 
-  // 4. Cerca il conteggio in tutti i possibili campi
-  const item = items[0];
-  // 4. Cerca il conteggio views dell'hashtag
-  const postCount =
-    item.searchHashtag?.views ||
-    item.videoCount ||
-    item.stats?.videoCount ||
-    item.challengeInfo?.stats?.videoCount ||
-    item.hashtagInfo?.stats?.videoCount ||
-    item.challenge?.stats?.videoCount ||
-    item.postsCount ||
-    null;
+  // Cerca videoCount in tutti gli item (TikTok lo mette solo in alcuni)
+  let videoCount = null;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
 
-  console.log(`🎯 Post totali #primal: ${postCount}`);
-  return postCount;
+    // Tutti i possibili campi dove TikTok nasconde il conteggio video
+    const found =
+      item.searchHashtag?.videoCount ||
+      item.searchHashtag?.video_count ||
+      item.hashtagInfo?.stats?.videoCount ||
+      item.challengeInfo?.stats?.videoCount ||
+      item.challenge?.stats?.videoCount ||
+      item.stats?.videoCount ||
+      item.videoCount ||
+      item.postCount ||
+      item.postsCount ||
+      null;
+
+    if (found) {
+      videoCount = found;
+      console.log(`🎯 videoCount trovato nell'item ${i}: ${videoCount}`);
+      break;
+    }
+  }
+
+  // Fallback: se non troviamo videoCount, salviamo le views come proxy
+  if (!videoCount) {
+    console.warn('⚠️ videoCount non trovato direttamente. Stampo tutti i campi per debug:');
+    for (let i = 0; i < Math.min(items.length, 3); i++) {
+      console.log(`--- Item ${i} keys:`, Object.keys(items[i]));
+      if (items[i].searchHashtag) {
+        console.log(`--- Item ${i} searchHashtag:`, JSON.stringify(items[i].searchHashtag));
+      }
+    }
+
+    // Usa views come fallback temporaneo
+    const views = items[0]?.searchHashtag?.views || null;
+    if (views) {
+      console.warn(`⚠️ Uso views come fallback: ${views}`);
+      videoCount = views;
+    } else {
+      console.error('❌ Nessun dato utile trovato');
+      process.exit(1);
+    }
+  }
+
+  return videoCount;
 }
 
 async function updateDataFile(count) {
@@ -148,10 +176,10 @@ async function updateDataFile(count) {
   const idx = records.findIndex(r => r.date === today);
   if (idx >= 0) {
     records[idx].total = count;
-    console.log(`🔄 Aggiornato ${today}`);
+    console.log(`🔄 Aggiornato record per ${today}`);
   } else {
     records.push({ date: today, total: count });
-    console.log(`➕ Aggiunto ${today}`);
+    console.log(`➕ Aggiunto nuovo record per ${today}`);
   }
 
   records.sort((a, b) => a.date.localeCompare(b.date));
@@ -161,7 +189,7 @@ async function updateDataFile(count) {
 
 (async () => {
   try {
-    const count = await fetchPrimalCount();
+    const count = await fetchPrimalVideoCount();
     await updateDataFile(count);
     console.log('✅ Completato!');
   } catch(err) {
