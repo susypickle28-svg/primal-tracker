@@ -1,135 +1,176 @@
-// fetch-primal.js
-// Eseguito ogni notte da GitHub Actions
-// Legge il conteggio di #primal da TikTok via Apify e aggiorna data.json
+// fetch-primal.js — Bot automatico #primal tracker
+// Usa Apify clockworks/tiktok-scraper per leggere il conteggio hashtag
 
-const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+const https = require('https');
 const fs = require('fs');
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
-const HASHTAG = 'primal';
 const DATA_FILE = 'data.json';
 
-async function runApifyActor() {
-  console.log(`🚀 Avvio scraper TikTok per #${HASHTAG}...`);
+if (!APIFY_TOKEN) {
+  console.error('❌ APIFY_TOKEN non trovato! Controlla i GitHub Secrets.');
+  process.exit(1);
+}
 
-  // Avvia l'actor Apify per TikTok hashtag
-  const runRes = await fetch(
-    `https://api.apify.com/v2/acts/clockworks~tiktok-hashtag-scraper/runs?token=${APIFY_TOKEN}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        hashtags: [HASHTAG],
-        resultsPerPage: 1,        // ci basta solo il conteggio totale
-        shouldDownloadVideos: false,
-        shouldDownloadCovers: false,
-      })
+// Helper: HTTP request con Promise
+function httpRequest(options, body = null) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          resolve({ status: res.statusCode, body: JSON.parse(data) });
+        } catch(e) {
+          resolve({ status: res.statusCode, body: data });
+        }
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+// Sleep
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function fetchPrimalCount() {
+  console.log('🚀 Avvio scraper TikTok per #primal...');
+
+  // 1. Avvia actor Apify
+  const runBody = JSON.stringify({
+    hashtags: ['primal'],
+    resultsPerPage: 1,
+    shouldDownloadVideos: false,
+    shouldDownloadCovers: false,
+    shouldDownloadSubtitles: false,
+    shouldDownloadSlideshowImages: false,
+  });
+
+  const runRes = await httpRequest({
+    hostname: 'api.apify.com',
+    path: `/v2/acts/clockworks~tiktok-scraper/runs?token=${APIFY_TOKEN}`,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(runBody),
     }
-  );
+  }, runBody);
 
-  if (!runRes.ok) {
-    throw new Error(`Errore avvio actor: ${runRes.status} ${await runRes.text()}`);
+  if (runRes.status !== 201) {
+    console.error('❌ Errore avvio actor:', JSON.stringify(runRes.body));
+    process.exit(1);
   }
 
-  const runData = await runRes.json();
-  const runId = runData.data.id;
+  const runId = runRes.body.data.id;
   console.log(`✅ Actor avviato. Run ID: ${runId}`);
 
-  // Aspetta che finisca (polling ogni 10 secondi, max 3 minuti)
+  // 2. Polling fino a SUCCEEDED
   let status = 'RUNNING';
   let attempts = 0;
-  while (status === 'RUNNING' || status === 'READY') {
-    await new Promise(r => setTimeout(r, 10000));
+  while (['RUNNING', 'READY', 'ABORTING'].includes(status)) {
+    await sleep(12000);
     attempts++;
-    if (attempts > 18) throw new Error('Timeout: actor ci ha messo troppo');
+    if (attempts > 20) {
+      console.error('❌ Timeout dopo 4 minuti');
+      process.exit(1);
+    }
 
-    const statusRes = await fetch(
-      `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`
-    );
-    const statusData = await statusRes.json();
-    status = statusData.data.status;
-    console.log(`⏳ Stato: ${status} (tentativo ${attempts})`);
+    const statusRes = await httpRequest({
+      hostname: 'api.apify.com',
+      path: `/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`,
+      method: 'GET',
+    });
+
+    status = statusRes.body.data.status;
+    console.log(`⏳ Stato: ${status} (${attempts * 12}s)`);
   }
 
   if (status !== 'SUCCEEDED') {
-    throw new Error(`Actor fallito con stato: ${status}`);
+    console.error(`❌ Actor fallito con stato: ${status}`);
+    process.exit(1);
   }
 
-  // Leggi i risultati dal dataset
-  const datasetId = (await (await fetch(
-    `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`
-  )).json()).data.defaultDatasetId;
+  // 3. Leggi dataset
+  const runInfoRes = await httpRequest({
+    hostname: 'api.apify.com',
+    path: `/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`,
+    method: 'GET',
+  });
+  const datasetId = runInfoRes.body.data.defaultDatasetId;
 
-  const itemsRes = await fetch(
-    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=1`
-  );
-  const items = await itemsRes.json();
+  const itemsRes = await httpRequest({
+    hostname: 'api.apify.com',
+    path: `/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=5`,
+    method: 'GET',
+  });
 
-  if (!items || items.length === 0) {
-    throw new Error('Nessun risultato dal dataset');
+  const items = itemsRes.body;
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    console.error('❌ Dataset vuoto');
+    process.exit(1);
   }
 
-  // Estrai il conteggio totale dei post
+  console.log('📦 Primo item:', JSON.stringify(items[0], null, 2));
+
+  // 4. Cerca il conteggio in tutti i possibili campi
   const item = items[0];
-  console.log('📦 Risposta Apify:', JSON.stringify(item, null, 2));
-
-  // Il campo può variare — proviamo i più comuni
   const postCount =
     item.videoCount ||
-    item.postsCount ||
     item.stats?.videoCount ||
     item.challengeInfo?.stats?.videoCount ||
     item.hashtagInfo?.stats?.videoCount ||
+    item.challenge?.stats?.videoCount ||
+    item.postsCount ||
     null;
 
   if (!postCount) {
-    throw new Error('Non riesco a trovare il conteggio dei post nella risposta');
+    // Stampa tutti i campi per debug
+    console.error('❌ Campo conteggio non trovato. Campi disponibili:', Object.keys(item));
+    console.error('Full item:', JSON.stringify(item, null, 2));
+    process.exit(1);
   }
 
-  console.log(`🎯 Post totali #${HASHTAG}: ${postCount}`);
+  console.log(`🎯 Post totali #primal: ${postCount}`);
   return postCount;
 }
 
 async function updateDataFile(count) {
   const today = new Date().toISOString().slice(0, 10);
-
-  // Leggi il file esistente o crea da zero
   let records = [];
+
   if (fs.existsSync(DATA_FILE)) {
     try {
       records = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      if (!Array.isArray(records)) records = [];
     } catch(e) {
-      console.warn('⚠️ data.json corrotto, ricreo da zero');
+      console.warn('⚠️ data.json corrotto, ricreo');
       records = [];
     }
   }
 
-  // Aggiorna o aggiungi il dato di oggi
-  const existing = records.findIndex(r => r.date === today);
-  if (existing >= 0) {
-    records[existing].total = count;
-    console.log(`🔄 Aggiornato dato di oggi (${today})`);
+  const idx = records.findIndex(r => r.date === today);
+  if (idx >= 0) {
+    records[idx].total = count;
+    console.log(`🔄 Aggiornato ${today}`);
   } else {
     records.push({ date: today, total: count });
-    console.log(`➕ Aggiunto nuovo record per ${today}`);
+    console.log(`➕ Aggiunto ${today}`);
   }
 
-  // Ordina per data
   records.sort((a, b) => a.date.localeCompare(b.date));
-
-  // Salva
   fs.writeFileSync(DATA_FILE, JSON.stringify(records, null, 2));
-  console.log(`💾 data.json salvato con ${records.length} record`);
+  console.log(`💾 Salvati ${records.length} record in data.json`);
 }
 
-// Main
 (async () => {
   try {
-    const count = await runApifyActor();
+    const count = await fetchPrimalCount();
     await updateDataFile(count);
-    console.log('✅ Tutto fatto!');
+    console.log('✅ Completato!');
   } catch(err) {
-    console.error('❌ Errore:', err.message);
+    console.error('❌ Errore fatale:', err);
     process.exit(1);
   }
 })();
