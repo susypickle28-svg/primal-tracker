@@ -2,8 +2,8 @@ name: Fetch #primal count
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # ogni giorno a mezzanotte UTC
-  workflow_dispatch:       # permette di avviarlo anche manualmente
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   fetch:
@@ -18,10 +18,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install dependencies
-        run: npm install node-fetch
+        run: npm install axios
 
       - name: Fetch #primal data from Apify
         env:
@@ -35,4 +35,3 @@ jobs:
           git add data.json
           git diff --cached --quiet || git commit -m "📊 Auto-update #primal $(date +'%Y-%m-%d')"
           git push
-          
