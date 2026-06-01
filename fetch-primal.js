@@ -116,7 +116,9 @@ async function fetchPrimalCount() {
 
   // 4. Cerca il conteggio in tutti i possibili campi
   const item = items[0];
+  // 4. Cerca il conteggio views dell'hashtag
   const postCount =
+    item.searchHashtag?.views ||
     item.videoCount ||
     item.stats?.videoCount ||
     item.challengeInfo?.stats?.videoCount ||
@@ -124,13 +126,6 @@ async function fetchPrimalCount() {
     item.challenge?.stats?.videoCount ||
     item.postsCount ||
     null;
-
-  if (!postCount) {
-    // Stampa tutti i campi per debug
-    console.error('❌ Campo conteggio non trovato. Campi disponibili:', Object.keys(item));
-    console.error('Full item:', JSON.stringify(item, null, 2));
-    process.exit(1);
-  }
 
   console.log(`🎯 Post totali #primal: ${postCount}`);
   return postCount;
