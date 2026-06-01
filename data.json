@@ -1,1 +1,10 @@
-[]
+[
+  {
+    "date": "2026-06-01",
+    "dailyVideos": 4,
+    "totalFetched": 50,
+    "totalLikes": 2937,
+    "totalViews": 28237,
+    "totalShares": 773
+  }
+]
