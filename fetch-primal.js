@@ -1,118 +1,143 @@
-// fetch-primal.js — #primal tracker
-// Legge videoCount direttamente dall'API web pubblica di TikTok (no auth richiesta)
+// fetch-primal.js — #primal daily activity tracker
+// Conta i video postati nelle ultime 24h con #primal usando Apify
 
 const https = require('https');
 const fs = require('fs');
 
+const APIFY_TOKEN = process.env.APIFY_TOKEN;
 const DATA_FILE = 'data.json';
 
-function httpRequest(options) {
+if (!APIFY_TOKEN) {
+  console.error('❌ APIFY_TOKEN non trovato! Controlla i GitHub Secrets.');
+  process.exit(1);
+}
+
+function httpRequest(options, body = null) {
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         try {
-          resolve({ status: res.statusCode, body: JSON.parse(data), raw: data });
+          resolve({ status: res.statusCode, body: JSON.parse(data) });
         } catch(e) {
-          resolve({ status: res.statusCode, body: null, raw: data });
+          resolve({ status: res.statusCode, body: data });
         }
       });
     });
     req.on('error', reject);
+    if (body) req.write(body);
     req.end();
   });
 }
 
-async function fetchPrimalVideoCount() {
-  console.log('🚀 Fetching #primal stats da TikTok...');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  // TikTok API pubblica usata dalla webapp per le stats degli hashtag
-  const res = await httpRequest({
-    hostname: 'www.tiktok.com',
-    path: '/api/challenge/detail/?challengeName=primal&aid=1988',
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'application/json, text/plain, */*',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Referer': 'https://www.tiktok.com/tag/primal',
-    }
+async function fetchDailyVideos() {
+  console.log('🚀 Avvio scraper #primal — conteggio video ultimi 24h...');
+
+  // Scarica 50 video recenti con #primal
+  const runBody = JSON.stringify({
+    hashtags: ['primal'],
+    resultsPerPage: 50,
+    shouldDownloadVideos: false,
+    shouldDownloadCovers: false,
+    shouldDownloadSubtitles: false,
+    shouldDownloadSlideshowImages: false,
   });
 
-  console.log('📡 Status:', res.status);
-
-  if (res.body) {
-    console.log('🔍 Keys risposta:', Object.keys(res.body));
-
-    const videoCount =
-      res.body?.challengeInfo?.stats?.videoCount ||
-      res.body?.challenge?.stats?.videoCount ||
-      res.body?.stats?.videoCount ||
-      res.body?.data?.stats?.videoCount ||
-      null;
-
-    if (videoCount) {
-      console.log(`🎯 Video totali #primal: ${videoCount}`);
-      return videoCount;
+  const runRes = await httpRequest({
+    hostname: 'api.apify.com',
+    path: `/v2/acts/clockworks~tiktok-scraper/runs?token=${APIFY_TOKEN}`,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(runBody),
     }
+  }, runBody);
 
-    // Debug completo se non trovato
-    console.log('🔍 Body completo:', JSON.stringify(res.body, null, 2));
-  } else {
-    console.log('🔍 Raw response (primi 500 chars):', res.raw.substring(0, 500));
+  if (runRes.status !== 201) {
+    console.error('❌ Errore avvio actor:', JSON.stringify(runRes.body));
+    process.exit(1);
   }
 
-  // Fallback: scraping della pagina HTML del tag
-  console.log('⚠️ API JSON non ha funzionato, provo scraping HTML...');
-  return await scrapeFromHTML();
-}
+  const runId = runRes.body.data.id;
+  console.log(`✅ Actor avviato. Run ID: ${runId}`);
 
-async function scrapeFromHTML() {
-  const res = await httpRequest({
-    hostname: 'www.tiktok.com',
-    path: '/tag/primal',
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
+  // Polling
+  let status = 'RUNNING';
+  let attempts = 0;
+  while (['RUNNING', 'READY', 'ABORTING'].includes(status)) {
+    await sleep(15000);
+    attempts++;
+    if (attempts > 30) {
+      console.error('❌ Timeout');
+      process.exit(1);
     }
+    const statusRes = await httpRequest({
+      hostname: 'api.apify.com',
+      path: `/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`,
+      method: 'GET',
+    });
+    status = statusRes.body.data.status;
+    console.log(`⏳ Stato: ${status} (${attempts * 15}s)`);
+  }
+
+  if (status !== 'SUCCEEDED') {
+    console.error(`❌ Actor fallito: ${status}`);
+    process.exit(1);
+  }
+
+  // Leggi dataset
+  const runInfoRes = await httpRequest({
+    hostname: 'api.apify.com',
+    path: `/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`,
+    method: 'GET',
+  });
+  const datasetId = runInfoRes.body.data.defaultDatasetId;
+
+  const itemsRes = await httpRequest({
+    hostname: 'api.apify.com',
+    path: `/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=100`,
+    method: 'GET',
   });
 
-  console.log('📡 HTML Status:', res.status);
-
-  // Cerca __UNIVERSAL_DATA_FOR_REHYDRATION__ o simile nello script
-  const raw = res.raw;
-
-  // Pattern per trovare videoCount nel JSON embedded nella pagina
-  const patterns = [
-    /"videoCount"\s*:\s*(\d+)/,
-    /"video_count"\s*:\s*(\d+)/,
-    /"postCount"\s*:\s*(\d+)/,
-    /videoCount['"]\s*:\s*(\d+)/,
-  ];
-
-  for (const pattern of patterns) {
-    const match = raw.match(pattern);
-    if (match) {
-      const count = parseInt(match[1]);
-      console.log(`🎯 Trovato via HTML scraping: ${count}`);
-      return count;
-    }
+  const items = itemsRes.body;
+  if (!items || !Array.isArray(items)) {
+    console.error('❌ Dataset vuoto');
+    process.exit(1);
   }
 
-  // Stampa un pezzo di HTML per debug
-  const idx = raw.indexOf('primal');
-  if (idx > -1) {
-    console.log('🔍 Contesto "primal" nella pagina:', raw.substring(Math.max(0, idx-100), idx+300));
-  }
+  console.log(`📦 Ricevuti ${items.length} video totali`);
 
-  console.error('❌ videoCount non trovato neanche via HTML');
-  process.exit(1);
+  // Filtra solo i video delle ultime 24h
+  const oneDayAgo = Math.floor(Date.now() / 1000) - (24 * 60 * 60);
+  const recentVideos = items.filter(item => {
+    const ts = item.createTime || item.createTimeISO ? new Date(item.createTimeISO).getTime() / 1000 : 0;
+    return ts >= oneDayAgo;
+  });
+
+  console.log(`📅 Video nelle ultime 24h: ${recentVideos.length}`);
+  console.log(`📊 Video totali scaricati: ${items.length}`);
+
+  // Statistiche aggiuntive sui video recenti
+  const totalLikes = recentVideos.reduce((sum, v) => sum + (v.diggCount || 0), 0);
+  const totalViews = recentVideos.reduce((sum, v) => sum + (v.playCount || 0), 0);
+  const totalShares = recentVideos.reduce((sum, v) => sum + (v.shareCount || 0), 0);
+
+  console.log(`❤️ Like totali (24h): ${totalLikes}`);
+  console.log(`👁️ View totali (24h): ${totalViews}`);
+
+  return {
+    dailyVideos: recentVideos.length,
+    totalFetched: items.length,
+    totalLikes,
+    totalViews,
+    totalShares,
+  };
 }
 
-async function updateDataFile(count) {
+async function updateDataFile(stats) {
   const today = new Date().toISOString().slice(0, 10);
   let records = [];
 
@@ -121,28 +146,38 @@ async function updateDataFile(count) {
       records = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
       if (!Array.isArray(records)) records = [];
     } catch(e) {
+      console.warn('⚠️ data.json corrotto, ricreo');
       records = [];
     }
   }
 
+  const newRecord = {
+    date: today,
+    dailyVideos: stats.dailyVideos,
+    totalFetched: stats.totalFetched,
+    totalLikes: stats.totalLikes,
+    totalViews: stats.totalViews,
+    totalShares: stats.totalShares,
+  };
+
   const idx = records.findIndex(r => r.date === today);
   if (idx >= 0) {
-    records[idx].total = count;
+    records[idx] = newRecord;
     console.log(`🔄 Aggiornato ${today}`);
   } else {
-    records.push({ date: today, total: count });
+    records.push(newRecord);
     console.log(`➕ Aggiunto ${today}`);
   }
 
   records.sort((a, b) => a.date.localeCompare(b.date));
   fs.writeFileSync(DATA_FILE, JSON.stringify(records, null, 2));
-  console.log(`💾 Salvati ${records.length} record`);
+  console.log(`💾 Salvati ${records.length} record in data.json`);
 }
 
 (async () => {
   try {
-    const count = await fetchPrimalVideoCount();
-    await updateDataFile(count);
+    const stats = await fetchDailyVideos();
+    await updateDataFile(stats);
     console.log('✅ Completato!');
   } catch(err) {
     console.error('❌ Errore fatale:', err);
