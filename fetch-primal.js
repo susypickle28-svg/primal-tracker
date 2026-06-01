@@ -1,5 +1,5 @@
 // fetch-primal.js — Bot automatico #primal tracker
-// Usa Apify clockworks/tiktok-scraper per leggere il conteggio video dell'hashtag
+// Usa Apify clockworks~tiktok-hashtag-scraper per leggere il videoCount dell'hashtag
 
 const https = require('https');
 const fs = require('fs');
@@ -34,21 +34,16 @@ function httpRequest(options, body = null) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function fetchPrimalVideoCount() {
-  console.log('🚀 Avvio scraper TikTok per #primal...');
+  console.log('🚀 Avvio scraper hashtag TikTok per #primal...');
 
-  // Scarica più video così aumenta la chance di trovare videoCount
+  // clockworks~tiktok-hashtag-scraper — restituisce stats dell'hashtag incluso videoCount
   const runBody = JSON.stringify({
     hashtags: ['primal'],
-    resultsPerPage: 5,
-    shouldDownloadVideos: false,
-    shouldDownloadCovers: false,
-    shouldDownloadSubtitles: false,
-    shouldDownloadSlideshowImages: false,
   });
 
   const runRes = await httpRequest({
     hostname: 'api.apify.com',
-    path: `/v2/acts/clockworks~tiktok-scraper/runs?token=${APIFY_TOKEN}`,
+    path: `/v2/acts/clockworks~tiktok-hashtag-scraper/runs?token=${APIFY_TOKEN}`,
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -64,14 +59,14 @@ async function fetchPrimalVideoCount() {
   const runId = runRes.body.data.id;
   console.log(`✅ Actor avviato. Run ID: ${runId}`);
 
-  // Polling
+  // Polling fino a SUCCEEDED
   let status = 'RUNNING';
   let attempts = 0;
   while (['RUNNING', 'READY', 'ABORTING'].includes(status)) {
-    await sleep(12000);
+    await sleep(15000);
     attempts++;
     if (attempts > 20) {
-      console.error('❌ Timeout dopo 4 minuti');
+      console.error('❌ Timeout dopo 5 minuti');
       process.exit(1);
     }
     const statusRes = await httpRequest({
@@ -80,7 +75,7 @@ async function fetchPrimalVideoCount() {
       method: 'GET',
     });
     status = statusRes.body.data.status;
-    console.log(`⏳ Stato: ${status} (${attempts * 12}s)`);
+    console.log(`⏳ Stato: ${status} (${attempts * 15}s)`);
   }
 
   if (status !== 'SUCCEEDED') {
@@ -98,7 +93,7 @@ async function fetchPrimalVideoCount() {
 
   const itemsRes = await httpRequest({
     hostname: 'api.apify.com',
-    path: `/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=10`,
+    path: `/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=5`,
     method: 'GET',
   });
 
@@ -108,54 +103,29 @@ async function fetchPrimalVideoCount() {
     process.exit(1);
   }
 
-  console.log(`📦 Ricevuti ${items.length} item dal dataset`);
+  console.log(`📦 Ricevuti ${items.length} item`);
+  console.log('🔍 Struttura primo item:', JSON.stringify(items[0], null, 2));
 
-  // Cerca videoCount in tutti gli item (TikTok lo mette solo in alcuni)
-  let videoCount = null;
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
+  // Cerca videoCount nei campi tipici di tiktok-hashtag-scraper
+  const item = items[0];
+  const videoCount =
+    item.videoCount ||
+    item.video_count ||
+    item.stats?.videoCount ||
+    item.stats?.video_count ||
+    item.hashtagInfo?.stats?.videoCount ||
+    item.challengeInfo?.stats?.videoCount ||
+    item.challenge?.stats?.videoCount ||
+    item.postsCount ||
+    item.postCount ||
+    null;
 
-    // Tutti i possibili campi dove TikTok nasconde il conteggio video
-    const found =
-      item.searchHashtag?.videoCount ||
-      item.searchHashtag?.video_count ||
-      item.hashtagInfo?.stats?.videoCount ||
-      item.challengeInfo?.stats?.videoCount ||
-      item.challenge?.stats?.videoCount ||
-      item.stats?.videoCount ||
-      item.videoCount ||
-      item.postCount ||
-      item.postsCount ||
-      null;
-
-    if (found) {
-      videoCount = found;
-      console.log(`🎯 videoCount trovato nell'item ${i}: ${videoCount}`);
-      break;
-    }
-  }
-
-  // Fallback: se non troviamo videoCount, salviamo le views come proxy
   if (!videoCount) {
-    console.warn('⚠️ videoCount non trovato direttamente. Stampo tutti i campi per debug:');
-    for (let i = 0; i < Math.min(items.length, 3); i++) {
-      console.log(`--- Item ${i} keys:`, Object.keys(items[i]));
-      if (items[i].searchHashtag) {
-        console.log(`--- Item ${i} searchHashtag:`, JSON.stringify(items[i].searchHashtag));
-      }
-    }
-
-    // Usa views come fallback temporaneo
-    const views = items[0]?.searchHashtag?.views || null;
-    if (views) {
-      console.warn(`⚠️ Uso views come fallback: ${views}`);
-      videoCount = views;
-    } else {
-      console.error('❌ Nessun dato utile trovato');
-      process.exit(1);
-    }
+    console.error('❌ videoCount non trovato. Campi disponibili:', JSON.stringify(item, null, 2));
+    process.exit(1);
   }
 
+  console.log(`🎯 Video totali #primal: ${videoCount}`);
   return videoCount;
 }
 
