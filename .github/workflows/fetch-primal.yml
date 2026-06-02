@@ -22,9 +22,7 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: |
-          npm install playwright
-          npx playwright install chromium --with-deps
+        run: npm install tiktok-scraper
 
       - name: Fetch data and update
         run: node fetch-primal.js
