@@ -2,14 +2,15 @@ name: Fetch
 
 on:
   schedule:
-    - cron: '*/15 * * * *'   # ogni 15 minuti
+    - cron: '*/15 * * * *'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout repo
@@ -23,10 +24,15 @@ jobs:
       - name: Install dependencies
         run: npm install apify-client
 
-      - name: Fetch
+      - name: Fetch data and update
         env:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
         run: node fetch-primal.js
+
+      # ⚠️ FORZA l'aggiornamento del timestamp – così il file cambia sempre
+      - name: Force update timestamp in data.json
+        run: |
+          jq '. + { "lastGitUpdate": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'" }' data.json > data.tmp && mv data.tmp data.json
 
       - name: Commit and push data
         run: |
