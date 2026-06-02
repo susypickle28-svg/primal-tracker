@@ -22,14 +22,10 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install apify-client
+        run: npm install tiktok-scraper
 
       - name: Fetch data and update
-        env:
-          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
         run: node fetch-primal.js
-
-      # ⚠️ RIMOSSO lo step problematico qui ⚠️
 
       - name: Commit and push data
         run: |
