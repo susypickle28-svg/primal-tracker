@@ -1,54 +1,61 @@
-// fetch-primal.js — v10 (gratuito, senza Apify)
-// Utilizza la libreria tiktok-scraper per ottenere video con #primal
-
-const { TikTokScraper } = require('tiktok-scraper');
+// fetch-primal.js — v11 (yt-dlp, senza canvas)
+const { execSync } = require('child_process');
 const fs = require('fs');
 
 const DATA_FILE = 'data.json';
 
 async function fetchDailyVideos() {
-  console.log('🚀 Avvio scraping TikTok per #primal...');
+  console.log('🚀 Avvio yt-dlp per #primal...');
+
+  // Esegue yt-dlp per trovare video con #primal nelle ultime 24h
+  const today = new Date();
+  const oneDayAgo = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  const dateFilter = oneDayAgo.toISOString().slice(0, 10);
 
   try {
-    // Scraping dell'hashtag #primal (massimo 1000 video)
-    const videos = await TikTokScraper.hashtag({
-      name: 'primal',
-      count: 1000,           // Numero di video da ottenere (max 1000)
-      timeout: 30000,        // Timeout 30 secondi
-    });
+    // 1. Cerca video con #primal
+    const searchResult = execSync(
+      `yt-dlp --no-download --write-info-json --print "%(title)s|||%(uploader)s|||%(view_count)s|||%(like_count)s|||%(upload_date)s|||%(webpage_url)s|||%(video_id)s" "https://www.tiktok.com/tag/primal" --dateafter ${dateFilter} --max-filesize 10G --no-warnings`,
+      { stdio: ['pipe', 'pipe', 'pipe'] }
+    );
 
-    console.log(`📦 Ricevuti ${videos.length} video totali`);
+    const lines = searchResult.toString().trim().split('\n').filter(l => l.includes('|||'));
+    
+    console.log(`📦 Ricevuti ${lines.length} video totali`);
 
-    // Filtra quelli delle ultime 24h
-    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-    const recentVideos = videos.filter(v => {
-      const ts = v.createTime ? v.createTime * 1000 : 0; // createTime è in secondi
-      return ts >= oneDayAgo;
-    });
+    // 2. Calcola i dati
+    let totalLikes = 0;
+    let totalViews = 0;
+    let totalShares = 0;
 
-    console.log(`📅 Video nelle ultime 24h: ${recentVideos.length}`);
-
-    // Calcola like, view, share (se disponibili)
-    const totalLikes = recentVideos.reduce((s, v) => s + (v.diggCount || 0), 0);
-    const totalViews = recentVideos.reduce((s, v) => s + (v.playCount || 0), 0);
-    const totalShares = recentVideos.reduce((s, v) => s + (v.shareCount || 0), 0);
+    for (const line of lines) {
+      const parts = line.split('|||');
+      if (parts.length >= 5) {
+        const views = parseInt(parts[2]) || 0;
+        const likes = parseInt(parts[3]) || 0;
+        totalViews += views;
+        totalLikes += likes;
+        // Condivisioni non disponibili nell'output standard
+      }
+    }
 
     console.log(`❤️ Like: ${totalLikes}  👁️ View: ${totalViews}`);
 
     return {
-      dailyVideos: recentVideos.length,
-      totalFetched: videos.length,
+      dailyVideos: lines.length,
+      totalFetched: lines.length,
       totalLikes,
       totalViews,
-      totalShares,
+      totalShares: 0, // yt-dlp non restituisce shareCount
     };
   } catch (err) {
-    console.error('❌ Errore durante lo scraping:', err.message);
+    console.error('❌ Errore yt-dlp:', err.message);
     throw err;
   }
 }
 
 async function updateDataFile(stats) {
+  // ... (identico alla versione precedente)
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
   const updateTime = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' });
@@ -57,10 +64,7 @@ async function updateDataFile(stats) {
   if (fs.existsSync(DATA_FILE)) {
     try {
       records = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-      if (!Array.isArray(records)) records = [];
-    } catch (e) {
-      records = [];
-    }
+    } catch (e) { records = []; }
   }
 
   const newRecord = {
@@ -74,18 +78,10 @@ async function updateDataFile(stats) {
   };
 
   const idx = records.findIndex(r => r.date === today);
-  if (idx >= 0) {
-    records[idx] = newRecord;
-    console.log(`🔄 Aggiornato ${today} @ ${updateTime}`);
-  } else {
-    records.push(newRecord);
-    console.log(`➕ Aggiunto ${today} @ ${updateTime}`);
-  }
+  if (idx >= 0) records[idx] = newRecord;
+  else records.push(newRecord);
 
-  if (records.length > 90) {
-    records = records.slice(-90);
-  }
-
+  if (records.length > 90) records = records.slice(-90);
   records.sort((a, b) => a.date.localeCompare(b.date));
   fs.writeFileSync(DATA_FILE, JSON.stringify(records, null, 2));
   console.log(`💾 Salvati ${records.length} record`);
@@ -99,7 +95,6 @@ async function updateDataFile(stats) {
     console.log('✅ Completato con successo!');
   } catch (err) {
     console.error('❌ Errore fatale:', err);
-    console.log('⚠️ Il workflow continuerà al prossimo ciclo.');
     process.exit(0);
   }
 })();
