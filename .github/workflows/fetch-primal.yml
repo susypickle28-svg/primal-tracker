@@ -1,4 +1,4 @@
-name: Fetch
+ìname: Fetch
 
 on:
   schedule:
@@ -20,6 +20,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      # 🔥 Aggiungi questo step per installare le librerie necessarie per canvas
+      - name: Install system dependencies for canvas
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcairo2-dev \
+            libjpeg-dev \
+            libpango1.0-dev \
+            libgif-dev \
+            librsvg2-dev \
+            build-essential
 
       - name: Install dependencies
         run: npm install tiktok-scraper
