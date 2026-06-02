@@ -1,11 +1,12 @@
-// fetch-primal.js — #primal daily activity tracker
+// fetch-primal.js — #primal daily activity tracker v6
 // Conta i video postati nelle ultime 24h con #primal usando Apify
+// Salva anche l'ora esatta del run in updateTime
 
 const https = require('https');
-const fs = require('fs');
+const fs    = require('fs');
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
-const DATA_FILE = 'data.json';
+const DATA_FILE   = 'data.json';
 
 if (!APIFY_TOKEN) {
   console.error('❌ APIFY_TOKEN non trovato! Controlla i GitHub Secrets.');
@@ -18,11 +19,8 @@ function httpRequest(options, body = null) {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        try {
-          resolve({ status: res.statusCode, body: JSON.parse(data) });
-        } catch(e) {
-          resolve({ status: res.statusCode, body: data });
-        }
+        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
+        catch(e) { resolve({ status: res.statusCode, body: data }); }
       });
     });
     req.on('error', reject);
@@ -36,7 +34,6 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function fetchDailyVideos() {
   console.log('🚀 Avvio scraper #primal — conteggio video ultimi 24h...');
 
-  // Scarica 50 video recenti con #primal
   const runBody = JSON.stringify({
     hashtags: ['primal'],
     resultsPerPage: 50,
@@ -64,22 +61,18 @@ async function fetchDailyVideos() {
   const runId = runRes.body.data.id;
   console.log(`✅ Actor avviato. Run ID: ${runId}`);
 
-  // Polling
   let status = 'RUNNING';
   let attempts = 0;
   while (['RUNNING', 'READY', 'ABORTING'].includes(status)) {
     await sleep(15000);
     attempts++;
-    if (attempts > 30) {
-      console.error('❌ Timeout');
-      process.exit(1);
-    }
-    const statusRes = await httpRequest({
+    if (attempts > 30) { console.error('❌ Timeout'); process.exit(1); }
+    const s = await httpRequest({
       hostname: 'api.apify.com',
       path: `/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`,
       method: 'GET',
     });
-    status = statusRes.body.data.status;
+    status = s.body.data.status;
     console.log(`⏳ Stato: ${status} (${attempts * 15}s)`);
   }
 
@@ -88,13 +81,12 @@ async function fetchDailyVideos() {
     process.exit(1);
   }
 
-  // Leggi dataset
-  const runInfoRes = await httpRequest({
+  const runInfo = await httpRequest({
     hostname: 'api.apify.com',
     path: `/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`,
     method: 'GET',
   });
-  const datasetId = runInfoRes.body.data.defaultDatasetId;
+  const datasetId = runInfo.body.data.defaultDatasetId;
 
   const itemsRes = await httpRequest({
     hostname: 'api.apify.com',
@@ -110,68 +102,58 @@ async function fetchDailyVideos() {
 
   console.log(`📦 Ricevuti ${items.length} video totali`);
 
-  // Filtra solo i video delle ultime 24h
   const oneDayAgo = Math.floor(Date.now() / 1000) - (24 * 60 * 60);
   const recentVideos = items.filter(item => {
-    const ts = item.createTime || item.createTimeISO ? new Date(item.createTimeISO).getTime() / 1000 : 0;
+    const ts = item.createTime || (item.createTimeISO ? new Date(item.createTimeISO).getTime() / 1000 : 0);
     return ts >= oneDayAgo;
   });
 
+  const totalLikes  = recentVideos.reduce((s, v) => s + (v.diggCount  || 0), 0);
+  const totalViews  = recentVideos.reduce((s, v) => s + (v.playCount  || 0), 0);
+  const totalShares = recentVideos.reduce((s, v) => s + (v.shareCount || 0), 0);
+
   console.log(`📅 Video nelle ultime 24h: ${recentVideos.length}`);
-  console.log(`📊 Video totali scaricati: ${items.length}`);
+  console.log(`❤️  Like: ${totalLikes}  👁️  View: ${totalViews}`);
 
-  // Statistiche aggiuntive sui video recenti
-  const totalLikes = recentVideos.reduce((sum, v) => sum + (v.diggCount || 0), 0);
-  const totalViews = recentVideos.reduce((sum, v) => sum + (v.playCount || 0), 0);
-  const totalShares = recentVideos.reduce((sum, v) => sum + (v.shareCount || 0), 0);
-
-  console.log(`❤️ Like totali (24h): ${totalLikes}`);
-  console.log(`👁️ View totali (24h): ${totalViews}`);
-
-  return {
-    dailyVideos: recentVideos.length,
-    totalFetched: items.length,
-    totalLikes,
-    totalViews,
-    totalShares,
-  };
+  return { dailyVideos: recentVideos.length, totalFetched: items.length, totalLikes, totalViews, totalShares };
 }
 
 async function updateDataFile(stats) {
-  const today = new Date().toISOString().slice(0, 10);
-  let records = [];
+  const now   = new Date();
+  const today = now.toISOString().slice(0, 10);
+  // Ora italiana (UTC+2 in estate)
+  const updateTime = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' });
 
+  let records = [];
   if (fs.existsSync(DATA_FILE)) {
     try {
       records = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
       if (!Array.isArray(records)) records = [];
-    } catch(e) {
-      console.warn('⚠️ data.json corrotto, ricreo');
-      records = [];
-    }
+    } catch(e) { records = []; }
   }
 
   const newRecord = {
     date: today,
-    dailyVideos: stats.dailyVideos,
+    dailyVideos:  stats.dailyVideos,
     totalFetched: stats.totalFetched,
-    totalLikes: stats.totalLikes,
-    totalViews: stats.totalViews,
-    totalShares: stats.totalShares,
+    totalLikes:   stats.totalLikes,
+    totalViews:   stats.totalViews,
+    totalShares:  stats.totalShares,
+    updateTime,   // es. "14:00"
   };
 
   const idx = records.findIndex(r => r.date === today);
   if (idx >= 0) {
     records[idx] = newRecord;
-    console.log(`🔄 Aggiornato ${today}`);
+    console.log(`🔄 Aggiornato ${today} @ ${updateTime}`);
   } else {
     records.push(newRecord);
-    console.log(`➕ Aggiunto ${today}`);
+    console.log(`➕ Aggiunto ${today} @ ${updateTime}`);
   }
 
   records.sort((a, b) => a.date.localeCompare(b.date));
   fs.writeFileSync(DATA_FILE, JSON.stringify(records, null, 2));
-  console.log(`💾 Salvati ${records.length} record in data.json`);
+  console.log(`💾 Salvati ${records.length} record`);
 }
 
 (async () => {
