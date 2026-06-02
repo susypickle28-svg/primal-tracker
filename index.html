@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PRIMAL TRACKER · LOOKMAXX V6.0</title>
+    <title>PRIMAL TRACKER · LOOKMAXX V7.0</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=Unbounded:wght@700;800;900&display=swap" rel="stylesheet">
@@ -358,7 +358,7 @@
            MAIN — ELEGANT CORE
         ════════════════════════════════════════════════════ */
         main {
-            max-width: 560px;
+            max-width: 620px;
             margin: 0 auto;
             padding: 0 16px 80px;
         }
@@ -522,9 +522,48 @@
             color: #6c9cbc;
         }
 
-        /* ═══════════════════════════════════════════════════
-           STREAK — SUBTLE PACE
-        ════════════════════════════════════════════════════ */
+        /* ── CARD AGGIUNTIVE (Likes, Views, Shares, Total Fetched) ── */
+        .grid4 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .mini-card {
+            background: rgba(12, 12, 12, 0.85);
+            border: 1px solid #1a1a1a;
+            border-radius: 12px;
+            padding: 14px 8px 12px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            cursor: default;
+            font-family: 'Inter', sans-serif;
+        }
+        .mini-card:hover {
+            border-color: #3a2a1a;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        .mini-card .mc-val {
+            font-family: 'Unbounded', sans-serif;
+            font-weight: 800;
+            font-size: 22px;
+            color: #d4b56a;
+            display: block;
+            line-height: 1.2;
+        }
+        .mini-card .mc-lbl {
+            font-size: 9px;
+            letter-spacing: 3px;
+            color: #6a5a3a;
+            text-transform: uppercase;
+            margin-top: 4px;
+            display: block;
+        }
+
+        /* ── STREAK — SUBTLE PACE ── */
         .streak-wrap {
             background: rgba(12, 12, 12, 0.85);
             border: 1px solid #1a1a1a;
@@ -639,9 +678,7 @@
             color: #2a2a2a;
         }
 
-        /* ═══════════════════════════════════════════════════
-           PERIOD — GENTLE CYCLE
-        ════════════════════════════════════════════════════ */
+        /* ── PERIOD — GENTLE CYCLE ── */
         .tab-row {
             display: flex;
             gap: 8px;
@@ -724,18 +761,18 @@
             }
         }
         .p-lbl {
-            font-family: 'Cormorant Garamond', serif;
-            font-weight: 700;
-            font-size: 10px;
-            letter-spacing: 4px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            font-size: 11px;
+            letter-spacing: 2px;
             color: #6a5a3a;
-            margin-bottom: 8px;
-            text-transform: uppercase;
+            margin-bottom: 6px;
+            text-transform: none;
         }
         .p-val {
             font-family: 'Unbounded', sans-serif;
             font-weight: 900;
-            font-size: 28px;
+            font-size: 32px;
             color: #d4b56a;
             line-height: 1;
             text-shadow: 0 0 30px rgba(184, 148, 42, 0.03);
@@ -743,8 +780,8 @@
         .p-sub {
             font-family: 'Inter', sans-serif;
             font-weight: 400;
-            font-size: 11px;
-            color: #5a5a5a;
+            font-size: 12px;
+            color: #6a5a3a;
             margin-top: 4px;
             letter-spacing: 2px;
         }
@@ -779,7 +816,7 @@
         .pt-val {
             font-family: 'Unbounded', sans-serif;
             font-weight: 900;
-            font-size: 24px;
+            font-size: 26px;
             color: #d4b56a;
             text-shadow: 0 0 30px rgba(184, 148, 42, 0.03);
         }
@@ -788,14 +825,12 @@
             font-weight: 400;
             font-size: 10px;
             letter-spacing: 3px;
-            color: #5a5a5a;
+            color: #6a5a3a;
             margin-top: 4px;
             text-transform: uppercase;
         }
 
-        /* ═══════════════════════════════════════════════════
-           CHART — ELEGANT WAVE WITH TOOLTIP
-        ════════════════════════════════════════════════════ */
+        /* ── CHART — ELEGANT WAVE WITH TOOLTIP ── */
         .chart-box {
             background: rgba(12, 12, 12, 0.85);
             border: 1px solid #1a1a1a;
@@ -850,7 +885,6 @@
             overflow: visible;
         }
 
-        /* ── CUSTOM TOOLTIP FOR CHART ── */
         .chart-tooltip {
             position: absolute;
             background: rgba(12, 12, 12, 0.92);
@@ -907,9 +941,7 @@
             color: #3a3a3a;
         }
 
-        /* ═══════════════════════════════════════════════════
-           TABLE — LEDGER
-        ════════════════════════════════════════════════════ */
+        /* ── TABLE — LEDGER ── */
         .tbl-wrap {
             background: rgba(12, 12, 12, 0.85);
             border: 1px solid #1a1a1a;
@@ -1007,9 +1039,7 @@
             font-style: italic !important;
         }
 
-        /* ═══════════════════════════════════════════════════
-           ACTIONS — REFINED COMMANDS
-        ════════════════════════════════════════════════════ */
+        /* ── ACTIONS — REFINED COMMANDS ── */
         .actions {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -1043,9 +1073,7 @@
             transform: scale(0.95);
         }
 
-        /* ═══════════════════════════════════════════════════
-           TOAST — NOTIFICATION
-        ════════════════════════════════════════════════════ */
+        /* ── TOAST — NOTIFICATION ── */
         .toast {
             position: fixed;
             bottom: 32px;
@@ -1073,9 +1101,7 @@
             opacity: 1;
         }
 
-        /* ═══════════════════════════════════════════════════
-           FOOTER — PRIMAL CODE
-        ════════════════════════════════════════════════════ */
+        /* ── FOOTER — PRIMAL CODE ── */
         footer {
             text-align: center;
             padding: 30px 20px 36px;
@@ -1106,9 +1132,7 @@
             text-transform: uppercase;
         }
 
-        /* ═══════════════════════════════════════════════════
-           SCROLL REVEAL
-        ════════════════════════════════════════════════════ */
+        /* ── SCROLL REVEAL ── */
         .reveal {
             opacity: 0;
             transform: translateY(22px);
@@ -1119,9 +1143,15 @@
             transform: translateY(0);
         }
 
-        /* ═══════════════════════════════════════════════════
-           RESPONSIVE
-        ════════════════════════════════════════════════════ */
+        /* ── RESPONSIVE ── */
+        @media (max-width: 600px) {
+            .grid4 {
+                grid-template-columns: 1fr 1fr;
+            }
+            .mini-card .mc-val {
+                font-size: 18px;
+            }
+        }
         @media (max-width: 500px) {
             body {
                 font-size: 14px;
@@ -1262,9 +1292,9 @@
         <div class="logo">PRIMAL</div>
         <div class="tagline">Video Activity Tracker · Fully Automated</div>
         <div class="status-row">
-            <div class="pill pill-green"><div class="pulse pulse-green"></div>AUTO · OGNI ORA</div>
+            <div class="pill pill-green"><div class="pulse pulse-green"></div>AUTO · OGNI 15min</div>
             <div class="pill pill-cyan"><div class="pulse pulse-cyan"></div><span id="header-time">—</span></div>
-            <div class="pill pill-gold">V6.0</div>
+            <div class="pill pill-gold">V7.0</div>
             <a class="pill pill-github" href="https://github.com/susypickle28-svg/primal-tracker" target="_blank">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
                 GitHub
@@ -1279,7 +1309,7 @@
         <div class="grid2 reveal">
             <div class="card hero">
                 <span class="c-val" id="today-val">—</span>
-                <span class="c-lbl">Nuovi Video nelle Ultime 24h</span>
+                <span class="c-lbl">Nuovi Video <span style="color:#6a5a3a;">#primal</span> · 24h</span>
                 <span class="c-delta none" id="today-delta">–</span>
             </div>
             <div class="card">
@@ -1289,6 +1319,26 @@
             <div class="card">
                 <span class="c-val" id="peak-val">—</span>
                 <span class="c-lbl">Record</span>
+            </div>
+        </div>
+
+        <!-- ══ MINI CARD: Like, View, Share, Total Fetched ══ -->
+        <div class="grid4 reveal">
+            <div class="mini-card">
+                <span class="mc-val" id="total-likes">—</span>
+                <span class="mc-lbl">❤️ Like</span>
+            </div>
+            <div class="mini-card">
+                <span class="mc-val" id="total-views">—</span>
+                <span class="mc-lbl">👁️ View</span>
+            </div>
+            <div class="mini-card">
+                <span class="mc-val" id="total-shares">—</span>
+                <span class="mc-lbl">🔁 Share</span>
+            </div>
+            <div class="mini-card">
+                <span class="mc-val" id="total-fetched">—</span>
+                <span class="mc-lbl">📦 Scan</span>
             </div>
         </div>
 
@@ -1355,7 +1405,7 @@
 
     <footer>
         <p>Stay Primal · Stay Sigma · <strong>Looksmaxx or Die</strong></p>
-        <p class="primal-tag">Apex Predator Mode · #PrimalTracker V6.0</p>
+        <p class="primal-tag">Apex Predator Mode · #PrimalTracker V7.0</p>
         <p style="font-size: 10px; color: #1a1a1a; margin-top: 6px; letter-spacing: 4px; font-family: 'Cormorant Garamond', serif; font-style: italic;">
             <a href="https://github.com/susypickle28-svg/primal-tracker" target="_blank" style="color: #3a3a3a; text-decoration: none; border-bottom: 1px dashed #2a2a2a;">github.com/susypickle28-svg/primal-tracker</a>
         </p>
@@ -1379,7 +1429,6 @@
 
             const G = (a) => `rgba(184,148,42,${a})`;
             const D = (a) => `rgba(140,110,60,${a})`;
-            const W_ = (a) => `rgba(255,248,224,${a})`;
 
             function strokePath(pts, color, lw) {
                 if (!pts.length) return;
@@ -1709,9 +1758,7 @@
             if (!records.length) {
                 records = [
                     { date: '2026-06-01', dailyVideos: 4, totalFetched: 50,
-                        totalLikes: 2937, totalViews: 28237, totalShares: 773, updateTime: '01:52' },
-                    { date: '2026-06-02', dailyVideos: 6, totalFetched: 56,
-                        totalLikes: 3102, totalViews: 30100, totalShares: 812, updateTime: '02:30' }
+                        totalLikes: 2937, totalViews: 28237, totalShares: 773, updateTime: '01:52' }
                 ];
             }
             render();
@@ -1745,6 +1792,7 @@
             const tv = rec?.dailyVideos ?? null;
             countUp(document.getElementById('today-val'), tv);
 
+            // Delta
             const idx = records.findIndex(r => r.date === today);
             const del = document.getElementById('today-delta');
             if (idx > 0 && tv !== null) {
@@ -1755,10 +1803,25 @@
             } else { del.textContent = '—';
                 del.className = 'c-delta none'; }
 
+            // Media e Record
             countUp(document.getElementById('avg-val'), all.length ? Math.round(all.reduce((a, b) => a + b, 0) / all
             .length) : null);
             countUp(document.getElementById('peak-val'), all.length ? Math.max(...all) : null);
 
+            // Mini card (Like, View, Share, Fetched)
+            if (rec) {
+                countUp(document.getElementById('total-likes'), rec.totalLikes ?? null);
+                countUp(document.getElementById('total-views'), rec.totalViews ?? null);
+                countUp(document.getElementById('total-shares'), rec.totalShares ?? null);
+                countUp(document.getElementById('total-fetched'), rec.totalFetched ?? null);
+            } else {
+                document.getElementById('total-likes').textContent = '—';
+                document.getElementById('total-views').textContent = '—';
+                document.getElementById('total-shares').textContent = '—';
+                document.getElementById('total-fetched').textContent = '—';
+            }
+
+            // Update time
             if (records.length) {
                 const last = records[records.length - 1];
                 const ds = new Date(last.date + 'T00:00:00').toLocaleDateString('it-IT', { day: '2-digit', month: 'long',
@@ -1944,7 +2007,7 @@
             </div>
           `;
 
-            // Attiva il tooltip personalizzato
+            // Tooltip personalizzato
             const circles = host.querySelectorAll('circle');
             const tooltip = document.getElementById('chart-tooltip');
             const ttDay = document.getElementById('tt-day');
