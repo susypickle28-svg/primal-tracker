@@ -21,7 +21,10 @@ jobs:
         with:
           node-version: '22'
 
-      # ⚠️ NON serve npm install, yt-dlp è già installato su Ubuntu
+      - name: Install dependencies
+        run: |
+          npm install playwright
+          npx playwright install chromium --with-deps
 
       - name: Fetch data and update
         run: node fetch-primal.js
