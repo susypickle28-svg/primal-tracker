@@ -29,10 +29,7 @@ jobs:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
         run: node fetch-primal.js
 
-      # ⚠️ FORZA l'aggiornamento del timestamp – così il file cambia sempre
-      - name: Force update timestamp in data.json
-        run: |
-          jq '. + { "lastGitUpdate": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'" }' data.json > data.tmp && mv data.tmp data.json
+      # ⚠️ RIMOSSO lo step problematico qui ⚠️
 
       - name: Commit and push data
         run: |
