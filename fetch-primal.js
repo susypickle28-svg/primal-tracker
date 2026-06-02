@@ -1,7 +1,7 @@
-// fetch-primal.js — #primal daily activity tracker v7
+// fetch-primal.js — #primal daily activity tracker v8
 // Conta i video postati nelle ultime 24h con #primal usando Apify
 // Aggiornamento automatico ogni 15 minuti
-// Gestisce paginazione per catturare tutti i video recenti
+// Gestisce paginazione fino a 2000 video con log di debug
 
 const https = require('https');
 const fs = require('fs');
@@ -44,20 +44,19 @@ function httpRequest(options, body = null, retry = 3) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// Recupera tutti i video con #primal (paginazione fino a 500 risultati)
+// Recupera tutti i video con #primal (paginazione fino a 2000 risultati)
 async function fetchAllPrimalVideos() {
   console.log('🚀 Avvio scraper #primal — ricerca video ultimi 24h...');
 
-  // Parametri per ottenere video recenti con #primal (max 500)
   const runBody = JSON.stringify({
     hashtags: ['primal'],
-    resultsPerPage: 100,        // 100 per richiesta
-    maxItems: 500,             // massimo totale
+    resultsPerPage: 100,
+    maxItems: 2000,               // Aumentato per catturare più video
     shouldDownloadVideos: false,
     shouldDownloadCovers: false,
     shouldDownloadSubtitles: false,
     shouldDownloadSlideshowImages: false,
-    sortBy: 'latest',          // più recenti per primi
+    sortBy: 'latest',              // Più recenti per primi
   });
 
   const runRes = await httpRequest({
@@ -78,15 +77,15 @@ async function fetchAllPrimalVideos() {
   const runId = runRes.body.data.id;
   console.log(`✅ Actor avviato. Run ID: ${runId}`);
 
-  // Attendi completamento (con timeout esteso)
+  // Attendi completamento (timeout esteso a 25 minuti)
   let status = 'RUNNING';
   let attempts = 0;
-  const maxAttempts = 60; // 15 minuti di attesa
+  const maxAttempts = 100; // 25 minuti di attesa
   while (['RUNNING', 'READY', 'ABORTING'].includes(status)) {
     await sleep(15000);
     attempts++;
     if (attempts > maxAttempts) {
-      throw new Error('Timeout: l\'actor non è completato in 15 minuti');
+      throw new Error('Timeout: l\'actor non è completato in 25 minuti');
     }
     const s = await httpRequest({
       hostname: 'api.apify.com',
@@ -109,13 +108,13 @@ async function fetchAllPrimalVideos() {
   });
   const datasetId = runInfo.body.data.defaultDatasetId;
 
-  // Recupera tutti gli item (paginazione interna)
+  // Recupera tutti gli item (paginazione)
   let allItems = [];
   let offset = 0;
   const limit = 100;
   let hasMore = true;
 
-  while (hasMore && allItems.length < 500) {
+  while (hasMore) {
     const itemsRes = await httpRequest({
       hostname: 'api.apify.com',
       path: `/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=${limit}&offset=${offset}`,
@@ -138,31 +137,58 @@ async function fetchAllPrimalVideos() {
   }
 
   console.log(`✅ Totale video ricevuti: ${allItems.length}`);
+  
+  // 🔍 DEBUG: Stampa i primi 10 video per vedere le date
+  if (allItems.length > 0) {
+    console.log('📅 Prime 10 date dei video trovati:');
+    allItems.slice(0, 10).forEach((item, i) => {
+      const date = item.createTimeISO || item.createTime || 'N/A';
+      console.log(`  ${i+1}. ${date}`);
+    });
+  }
+
   return allItems;
 }
 
 async function fetchDailyVideos() {
   const items = await fetchAllPrimalVideos();
 
-  // Calcola timestamp 24h fa
+  // Calcola timestamp 24h fa (in millisecondi)
   const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
 
   const recentVideos = items.filter(item => {
-    // Usa createTimeISO se presente, altrimenti createTime (timestamp)
     let ts = 0;
+    // Cerca il timestamp nel formato ISO o in secondi/millisecondi
     if (item.createTimeISO) {
       ts = new Date(item.createTimeISO).getTime();
     } else if (item.createTime) {
-      ts = item.createTime * 1000; // assuming seconds
+      // Se createTime è in secondi (numero piccolo) o millisecondi (numero grande)
+      ts = item.createTime * 1000; // Assume secondi
+      if (ts > 1000000000000) { // Se è già in millisecondi
+        ts = item.createTime;
+      }
     }
     return ts >= oneDayAgo;
   });
 
+  // 🔍 DEBUG: Mostra quanti video sono stati filtrati
+  console.log(`📅 Video totali trovati: ${items.length}`);
+  console.log(`📅 Video nelle ultime 24h: ${recentVideos.length}`);
+
+  // Se recentVideos è vuoto, mostra un esempio di date dei primi 5 video totali
+  if (recentVideos.length === 0 && items.length > 0) {
+    console.log('⚠️  Nessun video nelle ultime 24h. Ecco le date dei primi 5 video totali:');
+    items.slice(0, 5).forEach((item, i) => {
+      const date = item.createTimeISO || item.createTime || 'N/A';
+      console.log(`  ${i+1}. ${date}`);
+    });
+  }
+
+  // Calcola like, view, share
   const totalLikes = recentVideos.reduce((s, v) => s + (v.diggCount || 0), 0);
   const totalViews = recentVideos.reduce((s, v) => s + (v.playCount || 0), 0);
   const totalShares = recentVideos.reduce((s, v) => s + (v.shareCount || 0), 0);
 
-  console.log(`📅 Video nelle ultime 24h: ${recentVideos.length}`);
   console.log(`❤️  Like: ${totalLikes}  👁️  View: ${totalViews}`);
 
   return {
@@ -177,7 +203,6 @@ async function fetchDailyVideos() {
 async function updateDataFile(stats) {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
-  // Ora italiana (UTC+2 in estate)
   const updateTime = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' });
 
   let records = [];
@@ -202,7 +227,6 @@ async function updateDataFile(stats) {
 
   const idx = records.findIndex(r => r.date === today);
   if (idx >= 0) {
-    // Se il dato precedente aveva più video, mantieni il massimo? No, sovrascrivi con l'ultimo rilevamento
     records[idx] = newRecord;
     console.log(`🔄 Aggiornato ${today} @ ${updateTime}`);
   } else {
@@ -210,7 +234,7 @@ async function updateDataFile(stats) {
     console.log(`➕ Aggiunto ${today} @ ${updateTime}`);
   }
 
-  // Mantieni solo gli ultimi 90 giorni per non appesantire
+  // Mantieni solo gli ultimi 90 giorni
   if (records.length > 90) {
     records = records.slice(-90);
   }
@@ -220,7 +244,6 @@ async function updateDataFile(stats) {
   console.log(`💾 Salvati ${records.length} record`);
 }
 
-// Esecuzione principale con gestione errori robusta
 (async () => {
   try {
     console.log('⏰ Avvio fetch #primal -', new Date().toISOString());
@@ -229,8 +252,6 @@ async function updateDataFile(stats) {
     console.log('✅ Completato con successo!');
   } catch (err) {
     console.error('❌ Errore fatale:', err);
-    // Se fallisce, non uscire con exit(1) per evitare che il workflow segni errore
-    // Invece, logga e termina normalmente (così il cron continua)
     console.log('⚠️  Il workflow continuerà al prossimo ciclo.');
     process.exit(0);
   }
