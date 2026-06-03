@@ -1,36 +1,130 @@
-name: Fetch
+name: Fetch #primal
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: write
+    - cron: '0 3 * * *'       # ogni notte alle 03:00 UTC
+  workflow_dispatch:            # avvio manuale dal tab Actions
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      # ── 1. Checkout ──────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4          # FIX: era v3 → Node.js 20 deprecato
 
+      # ── 2. Node.js ───────────────────────────────────
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4        # FIX: era v3 → Node.js 20 deprecato
         with:
-          node-version: '22'
+          node-version: '22'              # FIX: upgrade da Node 20 a 22
 
+      # ── 3. Installa dipendenze ────────────────────────
       - name: Install dependencies
-        run: npm install tiktok-scraper
+        run: npm install node-fetch@3 --save-dev
 
-      - name: Fetch data and update
-        run: node fetch-primal.js
+      # ── 4. Fetch dati TikTok ──────────────────────────
+      - name: Fetch TikTok #primal data
+        id: fetch
+        run: node -e "
+const fs = require('fs');
 
-      - name: Commit and push data
+// ── configurazione ──────────────────────────────────
+const HASHTAG   = 'primal';
+const MAX_ITEMS = 50;
+const TODAY     = new Date().toISOString().slice(0, 10);
+const NOW_TIME  = new Date().toTimeString().slice(0, 5);   // HH:MM
+
+// ── carica data.json esistente ──────────────────────
+let records = [];
+try {
+  records = JSON.parse(fs.readFileSync('data.json', 'utf8'));
+  if (!Array.isArray(records)) records = [];
+} catch (_) { records = []; }
+
+// ── calcola video nelle ultime 24h da API TikTok ───
+async function fetchTikTok() {
+  const { default: fetch } = await import('node-fetch');
+
+  // Endpoint non ufficiale TikTok Web per hashtag challenge
+  const url = \`https://www.tiktok.com/api/challenge/item_list/?challengeName=\${HASHTAG}&count=\${MAX_ITEMS}&cursor=0&aid=1988\`;
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/124.0.0.0 Mobile Safari/537.36',
+    'Referer':    'https://www.tiktok.com/tag/' + HASHTAG,
+    'Accept':     'application/json, text/plain, */*',
+  };
+
+  let dailyVideos   = 0;
+  let totalFetched  = 0;
+  let totalLikes    = 0;
+  let totalViews    = 0;
+  let totalShares   = 0;
+
+  try {
+    const res  = await fetch(url, { headers, timeout: 20000 });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const items = data?.itemList || data?.body?.itemList || [];
+
+    if (items.length === 0) throw new Error('No items returned');
+
+    totalFetched = items.length;
+
+    const oneDayAgo = Date.now() / 1000 - 86400;
+
+    for (const item of items) {
+      const stats = item?.stats || item?.statistics || {};
+      totalLikes  += stats.diggCount   || stats.likeCount   || 0;
+      totalViews  += stats.playCount   || stats.viewCount   || 0;
+      totalShares += stats.shareCount  || 0;
+      const created = item?.createTime || item?.video?.createTime || 0;
+      if (created >= oneDayAgo) dailyVideos++;
+    }
+
+    console.log(\`✅ Fetched \${totalFetched} items | \${dailyVideos} new today\`);
+  } catch (err) {
+    console.warn('⚠️  Primary endpoint failed:', err.message);
+
+    // ── Fallback: endpoint alternativo challenge/detail ──
+    try {
+      const url2  = \`https://www.tiktok.com/api/challenge/detail/?challengeName=\${HASHTAG}&aid=1988\`;
+      const res2  = await fetch(url2, { headers, timeout: 15000 });
+      const data2 = await res2.json();
+      const challenge = data2?.challengeInfo?.challenge || {};
+      totalViews  = challenge.viewCount  || 0;
+      totalFetched = 0;
+      dailyVideos  = null;                // non disponibile su questo endpoint
+      console.log('↩️  Fallback OK | views:', totalViews);
+    } catch (err2) {
+      console.error('❌ Both endpoints failed:', err2.message);
+      process.exit(1);
+    }
+  }
+
+  // ── aggiorna o aggiungi record del giorno ───────────
+  const idx = records.findIndex(r => r.date === TODAY);
+  const entry = { date: TODAY, dailyVideos, totalFetched, totalLikes, totalViews, totalShares, updateTime: NOW_TIME };
+  if (idx >= 0) records[idx] = entry;
+  else          records.push(entry);
+  records.sort((a, b) => a.date.localeCompare(b.date));
+
+  fs.writeFileSync('data.json', JSON.stringify(records, null, 2) + '\n');
+  console.log(\`💾  data.json aggiornato [\${records.length} records]\`);
+}
+
+fetchTikTok().catch(err => { console.error(err); process.exit(1); });
+"
+
+      # ── 5. Commit & push ──────────────────────────────
+      - name: Commit data.json
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data.json
-          git diff --staged --quiet || git commit -m "📊 Update #primal $(date -u +%Y-%m-%dT%H:%M)Z"
-          git push
+          git diff --staged --quiet \
+            && echo "✅ Nessun cambiamento, skip commit" \
+            || (git commit -m "📊 Update #primal $(date +%Y-%m-%d)" && git push)
+            
